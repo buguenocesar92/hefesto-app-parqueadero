@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Configuracion de PHPUnit de Gestion de Estacionamientos.
+
+    Las suites estan separadas a proposito, porque no todas pesan lo mismo:
+
+      - `Aislamiento`: que un operador no vea los datos de otro, y que el
+        registro no se pueda reescribir. Si esto falla, todo lo demas da igual.
+      - `Ocupacion`: que un lugar tenga a lo sumo una sesion abierta. Es la
+        garantia de concurrencia del sistema, y depende de un indice unico
+        parcial que SQLite no tiene.
+      - `Tarifas`: el calculo del cobro. Aca el numero es lo que importa.
+
+    Se pueden correr solas:
+      php artisan test --testsuite=Aislamiento
+      php artisan test --testsuite=Ocupacion
+      php artisan test --testsuite=Tarifas
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+         cacheDirectory=".phpunit.cache"
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true">
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+        <testsuite name="Aislamiento">
+            <directory>tests/Feature/Aislamiento</directory>
+        </testsuite>
+        <testsuite name="Ocupacion">
+            <directory>tests/Feature/Ocupacion</directory>
+        </testsuite>
+        <testsuite name="Tarifas">
+            <directory>tests/Feature/Tarifas</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <!--
+            Base de datos de pruebas.
+
+            IMPORTANTE: debe ser PostgreSQL, no SQLite.
+
+            El aislamiento entre operadores esta implementado con Row Level
+            Security, y la inmutabilidad del registro con un gatillo en
+            `movimientos`. En SQLite NINGUNA de las dos cosas existe: las
+            pruebas de aislamiento pasarian en verde sin comprobar nada, y
+            la del indice unico parcial de `estacionamientos` pasaria
+            siempre, porque SQLite no lo tiene.
+
+            Por eso la conexion esta FIJA en `pgsql` aqui, y no se deja que
+            la herede del `.env`. Es un error que ya se cometio en otro
+            proyecto de Hefesto Studio y quedo documentado. Ver docs/10.
+        -->
+        <env name="DB_CONNECTION" value="pgsql"/>
+        <env name="DB_DATABASE" value="parqueadero_test"/>
+        <env name="DB_USERNAME" value="parqueadero_app"/>
+        <env name="DB_PASSWORD" value=""/>
+        <env name="DB_HOST" value="127.0.0.1"/>
+        <env name="DB_PORT" value="5432"/>
+        <env name="REDIS_HOST" value="127.0.0.1"/>
+        <env name="PARQUEADERO_FOTO_OBLIGATORIA" value="false"/>
+        <env name="AUTHENTIK_ISSUER" value="https://id.ejemplo.cl/application/o/parqueadero/"/>
+        <env name="AUTHENTIK_CLIENT_ID" value="parqueadero-pruebas"/>
+        <env name="AUTHENTIK_CLIENT_SECRET" value="secreto-de-pruebas-no-real"/>
+        <env name="AUTHENTIK_REDIRECT_URI" value="http://localhost:8000/api/v1/acceso/callback"/>
+    </php>
+</phpunit>

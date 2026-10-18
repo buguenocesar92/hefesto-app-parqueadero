@@ -1,0 +1,77 @@
+# ---------------------------------------------------------------------------
+# Caddy: el unico que recibe peticiones del exterior.
+# ---------------------------------------------------------------------------
+# POR QUE CADDY Y NO NGINX EN LA FRONTERA
+# ---------------------------------------
+# 1. El certificado TLS se pide y se renueva solo. En un sistema que maneja
+#    datos de clientes, un certificado vencido es un incidente, y depender de
+#    que alguien se acuerde de renovarlo no es un plan.
+# 2. Un solo archivo, sin convenciones implicitas que haya que recordar.
+#
+# QUE HACE
+# --------
+# Recibe todo por 80 y 443 y reparte:
+#   /api/**   -> la API (Laravel)
+#   /**       -> la interfaz (Nuxt)
+#
+# LO QUE NO HACE
+# ---------------
+# No publica PostgreSQL, ni Redis, ni ningun puerto de servicio. Eso no se
+# abre nunca: ver `deploy/docker-compose.prod.yml`, donde esos servicios no
+# tienen `ports:`.
+# ---------------------------------------------------------------------------
+
+{
+    # Correo de contacto para los avisos de caducidad del certificado.
+    email {$ACME_CORREO:admin@ejemplo.cl}
+}
+
+# Redireccion de http a https y el sitio real.
+parqueadero.hefestostudio.cl {
+    encode gzip zstd
+
+    # Cabeceras de seguridad.
+    #
+    # `frame-ancestors 'none'`: la interfaz no se puede embeber en un marco de
+    # otro sitio. Con un sistema que muestra datos de clientes, el robo por
+    # iframe (clickjacking) es una amenaza real.
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # Las fotos de vehiculo son evidencia de un reclamo. El cachearlas en un
+    # intermedio es comodo, pero conviene que sea corto.
+    header /api/* Cache-Control "private, no-store"
+
+    # --- API ----------------------------------------------------------------
+    handle /api/* {
+        reverse_proxy api:9000 {
+            # La API va detras del proxy, asi que hay que decirle de donde
+            # viene la peticion de verdad. Sin esto, Laravel registra en la
+            # bitacora la direccion interna del contenedor y no la de la
+            # persona que hizo la accion.
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+
+    # --- Interfaz -----------------------------------------------------------
+    # Lo que no sea API va a Nuxt. Nuxt devuelve 404 para lo que no exista, en
+    # vez de mostrar una pagina de error del servidor.
+    handle {
+        reverse_proxy web:3000
+    }
+
+    log {
+        output stdout
+        format json
+        # No se registra el cuerpo de la peticion: puede contener el relato de
+        # un reclamo y los datos de contacto de un cliente.
+        level INFO
+    }
+}

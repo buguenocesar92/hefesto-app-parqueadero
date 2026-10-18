@@ -1,0 +1,218 @@
+# ---------------------------------------------------------------------------
+# Composicion de PRODUCCION.
+# ---------------------------------------------------------------------------
+# Correr con:
+#   docker compose -f deploy/docker-compose.prod.yml --env-file .env up -d
+#
+# LOS PUERTOS PUBLICADOS SON SOLO 80 Y 443
+# -----------------------------------------
+# PostgreSQL, Redis, la API y la interfaz NO tienen `ports:`. Viven en la red
+# interna y se hablan por nombre de servicio. Publicar el 5432 es poner la
+# base de datos a un escaneo de puertos de internet.
+#
+# Caddy es el unico que sale al exterior, y es el que termina el TLS.
+#
+# LOS SECRETOS VIENEN DEL `.env`
+# ------------------------------
+# Este archivo no tiene ninguna contrasena. Las que hay estan en `${...}` y se
+# leen del archivo de entorno, que no se versiona.
+#
+# OJO: los respaldos NO viven en un volumen de este compose. Viven en el
+# host, en `DIRECCION_RESGARDOS`, porque un respaldo dentro del mismo
+# servidor que respalda no es un respaldo. Ver docs/08-RESPALDOS.md.
+# ---------------------------------------------------------------------------
+
+name: parqueadero
+
+services:
+    # --- Base de datos ----------------------------------------------------
+    # DOS ROLES, Y NO UNO
+    # -------------------
+    # `POSTGRES_USER` es el rol de ARRANQUE y por eso se llama
+    # `DB_MIGRATE_USERNAME`: la imagen oficial ejecuta
+    # `initdb --username="$POSTGRES_USER"` y ese rol NACE superusuario. Solo se
+    # usa para `initdb` y para las tareas administrativas. La aplicacion NUNCA
+    # entra con el.
+    #
+    # El rol de la aplicacion (`DB_USERNAME`) lo crea
+    # `deploy/postgres/inicializar-rol.sh` al inicializar el volumen, con
+    # NOSUPERUSER y NOBYPASSRLS explicitos, y le da la propiedad de la base para
+    # que las migraciones de Laravel puedan crear el esquema. Ver docs/03.
+    #
+    # POR QUE IMPORTA: la documentacion de PostgreSQL 18 dice que los
+    # superusuarios "always bypass the row security system", y que
+    # `FORCE ROW LEVEL SECURITY` sujeta solo al DUENO de la tabla, no al
+    # superusuario. Con un solo rol las politicas no se aplicarian y el
+    # aislamiento entre operadores seria decorativo.
+    postgres:
+        image: postgres:17.6-alpine
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: ${DB_DATABASE:?falta DB_DATABASE}
+            POSTGRES_USER: ${DB_MIGRATE_USERNAME:?falta DB_MIGRATE_USERNAME}
+            POSTGRES_PASSWORD: ${DB_MIGRATE_PASSWORD:?falta DB_MIGRATE_PASSWORD}
+            # Chile continental. Sin esto, `NOW()` y las marcas de tiempo se
+            # guardan en UTC y el cierre del dia cae en el momento equivocado.
+            TZ: America/Santiago
+            PGTZ: America/Santiago
+            # Rol con el que conecta la aplicacion. Lo crea el script de arranque.
+            APP_DB_ROLE: ${DB_USERNAME:?falta DB_USERNAME}
+            APP_DB_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD}
+        volumes:
+            - volumen-postgres:/var/lib/postgresql/data
+            # Este archivo tiene que existir de verdad: si no, Docker monta uno
+            # vacio, el rol no se crea nunca y la API no arranca.
+            - ./postgres/inicializar-rol.sh:/docker-entrypoint-initdb.d/inicializar-rol.sh:ro
+        networks:
+            - interna
+        # SIN `ports:` a proposito. La base no se publica nunca.
+        healthcheck:
+            # `pg_isready` con el rol de la APLICACION: comprueba que la base
+            # acepta el rol que de verdad usa la API, no solo que el proceso vive.
+            test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:?falta DB_USERNAME} -d ${DB_DATABASE:?falta DB_DATABASE}"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
+    # --- Cache, colas y sesion --------------------------------------------
+    redis:
+        image: redis:8.2.3-alpine
+        restart: unless-stopped
+        command: >
+            redis-server
+            --save 900 1
+            --appendonly yes
+            --maxmemory 256mb
+            --maxmemory-policy allkeys-lru
+        volumes:
+            - volumen-redis:/data
+        networks:
+            - interna
+        # SIN `ports:`. Redis no se publica nunca.
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+
+    # --- API --------------------------------------------------------------
+    api:
+        build:
+            context: ../api
+            dockerfile: ../deploy/api/Dockerfile
+        restart: unless-stopped
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        environment:
+            APP_ENV: production
+            APP_DEBUG: "false"
+            APP_KEY: ${APP_KEY:?falta APP_KEY}
+            APP_URL: ${APP_URL:?falta APP_URL}
+            APP_WEB_URL: ${APP_WEB_URL:?falta APP_WEB_URL}
+
+            DB_CONNECTION: pgsql
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_DATABASE: ${DB_DATABASE}
+            # El rol con el que se conecta la aplicacion NO debe ser
+            # superusuario ni tener BYPASSRLS: con cualquiera de las dos cosas
+            # se salta el aislamiento entre operadores. Lo comprueba
+            # `parqueadero:verificar-aislamiento` en cada arranque.
+            DB_USERNAME: ${DB_USERNAME:?falta DB_USERNAME}
+            DB_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD}
+
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+
+            CACHE_STORE: redis
+            QUEUE_CONNECTION: database
+            SESSION_DRIVER: database
+
+            AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?falta AUTHENTIK_ISSUER}
+            AUTHENTIK_CLIENT_ID: ${AUTHENTIK_CLIENT_ID:?falta AUTHENTIK_CLIENT_ID}
+            AUTHENTIK_CLIENT_SECRET: ${AUTHENTIK_CLIENT_SECRET:?falta AUTHENTIK_CLIENT_SECRET}
+            AUTHENTIK_REDIRECT_URI: ${AUTHENTIK_REDIRECT_URI:?falta AUTHENTIK_REDIRECT_URI}
+            AUTHENTIK_GRUPO_ADMIN: ${AUTHENTIK_GRUPO_ADMIN:-parqueadero-administradores}
+            AUTHENTIK_GRUPO_OPERADORES: ${AUTHENTIK_GRUPO_OPERADORES:-parqueadero-operadores}
+
+            # Las migraciones NO se aplican al arrancar en produccion. Se
+            # aplican a mano, mirando el resultado. Un contenedor que migra
+            # solo aplica cambios de esquema sin que nadie lo haya decidido.
+            EJECUTAR_MIGRACIONES: "false"
+
+            # El entrypoint corre esta comprobacion y NO levanta php-fpm si la
+            # RLS no esta puesta.
+            PARQUEADERO_VERIFICAR_AISLAMIENTO: "true"
+
+            PARQUEADERO_ZONA_HORARIA: America/Santiago
+            PARQUEADERO_DIAS_AVISO_VENCIMIENTO: ${PARQUEADERO_DIAS_AVISO_VENCIMIENTO:-15}
+            PARQUEADERO_FOTO_OBLIGATORIA: ${PARQUEADERO_FOTO_OBLIGATORIA:-false}
+        volumes:
+            # Fotos de vehiculo: evidencia de un reclamo. Viven fuera del
+            # contenedor para que sobrevivan a un cambio de imagen.
+            - volumen-fotos:/var/www/html/storage/app/fotos
+        networks:
+            - interna
+            # SIN `ports:`. La API no se publica: habla con Caddy por la red
+            # interna.
+        healthcheck:
+            test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+            start_period: 40s
+
+    # --- Interfaz ---------------------------------------------------------
+    web:
+        build:
+            context: ../web
+            dockerfile: ../deploy/web/Dockerfile
+        restart: unless-stopped
+        depends_on:
+            - api
+        environment:
+            NODE_ENV: production
+            # Config PRIVADA: solo la usa el servidor de Nuxt. El navegador
+            # nunca ve la URL de la API.
+            NUXT_API_BASE: http://api:9000
+            NUXT_PUBLIC_BASE: ${APP_WEB_URL:?falta APP_WEB_URL}
+        networks:
+            - interna
+        # SIN `ports:`. La interfaz no se publica: Caddy la llama por nombre.
+        healthcheck:
+            test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1));"]
+            interval: 30s
+            timeout: 5s
+            retries: 3
+
+    # --- Unico punto de entrada publico -----------------------------------
+    caddy:
+        image: caddy:2.10.0-alpine
+        restart: unless-stopped
+        depends_on:
+            - api
+            - web
+        ports:
+            # Los unicos puertos publicados de todo el sistema.
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+            - volumen-certificados:/data/caddy
+        networks:
+            - interna
+        environment:
+            ACME_CORREO: ${ACME_CORREO:?falta ACME_CORREO}
+
+networks:
+    interna:
+        driver: bridge
+
+volumes:
+    volumen-postgres:
+    volumen-redis:
+    volumen-fotos:
+    volumen-certificados:

@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Dependencias y artefactos de la API (Laravel)
+# ---------------------------------------------------------------------------
+# El esqueleto de Laravel lo genera Composer, no el repositorio.
+
+/vendor/
+/node_modules/
+
+# `.env` real nunca se versiona. La plantilla si.
+/.env
+/.env.backup
+/.env.production
+/.env.testing
+
+# Clave de la aplicacion: es un secreto.
+/storage/*.key
+
+# Cache, sesiones compiladas y archivos subidos.
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+/bootstrap/cache/*.php
+
+# Fotos de vehiculos: son evidencia de un reclamo y pueden contener imagenes
+# de personas. Nunca al repositorio.
+/storage/app/fotos/
+/storage/app/public/fotos/
+
+# Pruebas
+/.phpunit.cache/
+/.phpunit.result.cache
+/coverage/

@@ -1,0 +1,26 @@
+# ---------------------------------------------------------------------------
+# Dependencias y artefactos de construccion de la interfaz (Nuxt)
+# ---------------------------------------------------------------------------
+
+node_modules/
+.nuxt/
+.output/
+.data/
+.nitro/
+.cache/
+
+# `.env` real nunca se versiona. La plantilla si.
+.env
+.env.*
+!.env.example
+
+# Sin cobertura de pruebas por ahora: no hay suite configurada en la
+# interfaz. Cuando exista, se descomenta.
+# coverage/
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

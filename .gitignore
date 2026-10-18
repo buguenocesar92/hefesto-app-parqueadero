@@ -1,0 +1,49 @@
+# ---------------------------------------------------------------------------
+# Archivos que NO se versionan
+# ---------------------------------------------------------------------------
+# La regla es una sola: NINGUN archivo con secretos entra al repositorio.
+# Las plantillas publicas son `.env.example`, que no tienen ningun valor real.
+
+# Entornos
+.env
+.env.*
+!.env.example
+!.env.example.plantilla
+
+# Dependencias
+node_modules/
+vendor/
+
+# Artefactos de construccion
+api/storage/*.key
+api/storage/app/*
+api/storage/framework/cache/*
+api/storage/framework/sessions/*
+api/storage/framework/views/*
+api/storage/logs/*
+web/.nuxt/
+web/.output/
+web/.data/
+
+# Pruebas
+api/.phpunit.cache/
+api/.phpunit.result.cache
+web/coverage/
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Respaldos: nunca deben quedar en el repositorio. Un respaldo tiene toda la
+# historia del estacionamiento, con las fotos de los vehiculos y el relato de
+# los reclamos.
+respaldos/
+*.dump
+*.dump.gz
+*.sql
+*.sql.gz
+manifiesto.txt
+COMPLETO

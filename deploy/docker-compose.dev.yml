@@ -1,0 +1,142 @@
+# ---------------------------------------------------------------------------
+# Composicion de DESARROLLO.
+# ---------------------------------------------------------------------------
+# Correr con:
+#   docker compose -f deploy/docker-compose.dev.yml --env-file .env up -d
+#
+# QUE CAMBIA RESPECTO DE PRODUCCION, Y POR QUE
+# ---------------------------------------------
+#
+#  1. PostgreSQL y Redis SI publican puertos, pero UNICA Y EXCLUSIVAMENTE en
+#     127.0.0.1. Quedan accesibles desde el equipo, nunca desde la red. Sin
+#     ese `127.0.0.1` el puerto queda abierto a internet, que es un accidente
+#     muy facil de cometer y muy caro de detectar.
+#
+#  2. La API publica el 8000 en 127.0.0.1, para poder mirar los logs de
+#     Laravel y usar `artisan tinker` sin entrar al contenedor.
+#
+#  3. `APP_DEBUG=true` y el servidor de recarga de codigo. En desarrollo se
+#     quiere ver el error completo; en produccion, jamas.
+#
+#  4. Las migraciones SI se aplican al arrancar. En desarrollo es comodo; en
+#     produccion es una decision que se toma a mano.
+#
+# LO QUE NO CAMBIA
+# ----------------
+# El aislamiento entre operadores. La RLS esta puesta aqui tambien, porque una
+# prueba de desarrollo que no la tiene no sirve: el error se descubre en
+# produccion, que es el peor lugar.
+# ---------------------------------------------------------------------------
+
+name: parqueadero-dev
+
+services:
+    postgres:
+        image: postgres:17.6-alpine
+        ports:
+            # SOLO en el loopback. NUNCA sin `127.0.0.1:`.
+            - "127.0.0.1:5432:5432"
+        environment:
+            POSTGRES_DB: ${DB_DATABASE:-parqueadero}
+            # Rol de ARRANQUE: la imagen oficial lo crea superusuario, asi que la
+            # aplicacion nunca entra con el.
+            POSTGRES_USER: ${DB_MIGRATE_USERNAME:-parqueadero_migra}
+            POSTGRES_PASSWORD: ${DB_MIGRATE_PASSWORD:?falta DB_MIGRATE_PASSWORD}
+            TZ: America/Santiago
+            PGTZ: America/Santiago
+            # Rol con el que conecta la aplicacion. Lo crea el script de arranque,
+            # con NOSUPERUSER y NOBYPASSRLS explicitos.
+            APP_DB_ROLE: ${DB_USERNAME:-parqueadero_app}
+            APP_DB_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD}
+        volumes:
+            - volumen-postgres-dev:/var/lib/postgresql/data
+            # Este archivo tiene que existir de verdad: si no, Docker monta uno
+            # vacio, el rol no se crea nunca y la API no arranca.
+            - ./postgres/inicializar-rol.sh:/docker-entrypoint-initdb.d/inicializar-rol.sh:ro
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-parqueadero_app} -d ${DB_DATABASE:-parqueadero}"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+
+    redis:
+        image: redis:8.2.3-alpine
+        ports:
+            - "127.0.0.1:6379:6379"
+        volumes:
+            - volumen-redis-dev:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 3s
+            retries: 10
+
+    api:
+        build:
+            context: ../api
+            dockerfile: ../deploy/api/Dockerfile
+        depends_on:
+            postgres:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        ports:
+            - "127.0.0.1:8000:9000"
+        environment:
+            APP_ENV: local
+            APP_DEBUG: "true"
+            APP_KEY: ${APP_KEY:?falta APP_KEY}
+            APP_URL: ${APP_URL:-http://localhost:8000}
+            APP_WEB_URL: ${APP_WEB_URL:-http://localhost:3000}
+
+            DB_CONNECTION: pgsql
+            DB_HOST: postgres
+            DB_PORT: 5432
+            DB_DATABASE: ${DB_DATABASE:-parqueadero}
+            DB_USERNAME: ${DB_USERNAME:-parqueadero_app}
+            DB_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD}
+
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+
+            CACHE_STORE: redis
+            QUEUE_CONNECTION: database
+            SESSION_DRIVER: database
+
+            AUTHENTIK_ISSUER: ${AUTHENTIK_ISSUER:?falta AUTHENTIK_ISSUER}
+            AUTHENTIK_CLIENT_ID: ${AUTHENTIK_CLIENT_ID:?falta AUTHENTIK_CLIENT_ID}
+            AUTHENTIK_CLIENT_SECRET: ${AUTHENTIK_CLIENT_SECRET:?falta AUTHENTIK_CLIENT_SECRET}
+            AUTHENTIK_REDIRECT_URI: ${AUTHENTIK_REDIRECT_URI:-http://localhost:8000/api/v1/acceso/callback}
+
+            # En desarrollo se migra al arrancar, para no tener que acordarse.
+            EJECUTAR_MIGRACIONES: "true"
+            PARQUEADERO_VERIFICAR_AISLAMIENTO: "true"
+
+            PARQUEADERO_ZONA_HORARIA: America/Santiago
+        volumes:
+            - ../api:/var/www/html
+            - volumen-fotos-dev:/var/www/html/storage/app/fotos
+        command: ["php", "artisan", "serve", "--host=0.0.0.0", "--port=9000"]
+
+    web:
+        build:
+            context: ../web
+            dockerfile: ../deploy/web/Dockerfile
+        depends_on:
+            - api
+        ports:
+            - "127.0.0.1:3000:3000"
+        environment:
+            NODE_ENV: development
+            NUXT_API_BASE: http://api:9000
+            NUXT_PUBLIC_BASE: ${APP_WEB_URL:-http://localhost:3000}
+        volumes:
+            - ../web:/app
+            - /app/node_modules
+            - /app/.nuxt
+        command: ["npm", "run", "dev"]
+
+volumes:
+    volumen-postgres-dev:
+    volumen-redis-dev:
+    volumen-fotos-dev:

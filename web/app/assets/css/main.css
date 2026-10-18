@@ -1,0 +1,270 @@
+/* -------------------------------------------------------------------------
+   Estilos base del sistema de estacionamientos.
+
+   Poco CSS a proposito. La interfaz se usa de pie, en una caseta, con una
+   pantalla a contraluz y a veces con guantes. Por eso:
+
+     - los botones son grandes y con contraste alto, no finos;
+     - los numeros que se comparan (capacidad, ocupados, total) van en
+       tamano grande y con cifras tabulares, para que se comparen de un
+       vistazo y no se alineen de forma distinta entre si;
+     - el color de estado nunca es el unico portador de informacion: cada
+       estado lleva tambien una palabra. Un operador con daltonismo, o con
+       la pantalla sucia, tiene que poder distinguir "lleno" de "vacío" sin
+       depender del rojo y del verde.
+   ------------------------------------------------------------------------- */
+
+:root {
+  --color-texto: #1f2933;
+  --color-texto-tenue: #627d98;
+  --color-borde: #d9e2ec;
+  --color-fondo: #f0f4f8;
+  --color-principal: #2b6cb0;
+  --color-principal-oscuro: #2c5282;
+  --color-ok: #276749;
+  --color-aviso: #975a16;
+  --color-peligro: #9b2c2c;
+  --color-superficie: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-fondo);
+  color: var(--color-texto);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.6rem;
+  margin: 0 0 0.5rem;
+}
+
+h2 {
+  font-size: 1.2rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1rem 0 0.5rem;
+}
+
+/* Cifras que se comparan: mismo ancho por digito. */
+.cifra {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* --- Botones ------------------------------------------------------------ */
+
+.boton {
+  font: inherit;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-borde);
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+  background: var(--color-superficie);
+  color: var(--color-texto);
+  text-decoration: none;
+  display: inline-block;
+  /* Targeta grande: se usa con guantes y con prisa. */
+  min-height: 2.75rem;
+}
+
+.boton:hover:not(:disabled) {
+  border-color: var(--color-principal);
+}
+
+.boton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.boton--principal {
+  background: var(--color-principal);
+  border-color: var(--color-principal);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.boton--principal:hover:not(:disabled) {
+  background: var(--color-principal-oscuro);
+}
+
+.boton--peligro {
+  background: var(--color-peligro);
+  border-color: var(--color-peligro);
+  color: #ffffff;
+}
+
+.boton--discreto {
+  padding: 0.35rem 0.75rem;
+  min-height: 2rem;
+  font-size: 0.85rem;
+}
+
+/* --- Campos ------------------------------------------------------------- */
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.campo__etiqueta {
+  font-size: 0.85rem;
+  color: var(--color-texto-tenue);
+}
+
+.campo input,
+.campo select,
+.campo textarea {
+  font: inherit;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-borde);
+  border-radius: 0.375rem;
+  background: var(--color-superficie);
+  /* La patente se escribe rapido y en mayusculas: no se corrige con
+     tildes ni con acentos, pero si con puntos y guiones. */
+  text-transform: uppercase;
+}
+
+.campo textarea {
+  text-transform: none;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+/* --- Tablas ------------------------------------------------------------- */
+
+.tabla {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.tabla th,
+.tabla td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--color-borde);
+  font-size: 0.92rem;
+}
+
+.tabla th {
+  background: #eef2f7;
+  font-weight: 600;
+}
+
+.tabla tr:last-child td {
+  border-bottom: none;
+}
+
+/* --- Estados ------------------------------------------------------------
+   Cada estado lleva una PALABRA ademas del color. El color solo es una
+   ayuda; nunca es el unico modo de saber que pasa.
+   ------------------------------------------------------------------------- */
+
+.estado {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid currentcolor;
+}
+
+.estado--ok {
+  color: var(--color-ok);
+  background: #f0fff4;
+}
+
+.estado--aviso {
+  color: var(--color-aviso);
+  background: #fffff0;
+}
+
+.estado--peligro {
+  color: var(--color-peligro);
+  background: #fff5f5;
+}
+
+.estado--neutro {
+  color: var(--color-texto-tenue);
+  background: #f7fafc;
+}
+
+/* --- Avisos ------------------------------------------------------------- */
+
+.aviso {
+  padding: 0.75rem 1rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-borde);
+  background: var(--color-superficie);
+  margin-bottom: 1rem;
+}
+
+.aviso--error {
+  border-color: #f5c2c7;
+  background: #fff5f5;
+  color: var(--color-peligro);
+}
+
+.aviso--ok {
+  border-color: #9ae6b4;
+  background: #f0fff4;
+  color: var(--color-ok);
+}
+
+.aviso--info {
+  border-color: #bee3f8;
+  background: #ebf8ff;
+  color: var(--color-principal-oscuro);
+}
+
+/* --- Paneles de cifras --------------------------------------------------
+   Capacidad, ocupados y disponibles van grandes: son las tres cosas que el
+   operador mira con el cliente esperando.
+   ------------------------------------------------------------------------- */
+
+.cifras {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
+.cifras__item {
+  flex: 1 1 8rem;
+  background: var(--color-superficie);
+  border: 1px solid var(--color-borde);
+  border-radius: 0.375rem;
+  padding: 0.9rem 1rem;
+}
+
+.cifras__valor {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.cifras__etiqueta {
+  font-size: 0.8rem;
+  color: var(--color-texto-tenue);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
